@@ -5,10 +5,7 @@ import com.datastax.driver.core.Session;
 
 import java.util.UUID;
 
-/**
- * Hello world!
- *
- */
+
 public class App 
 {
     public static void main( String[] args )
@@ -78,7 +75,7 @@ public class App
 
 
 
-            // System.out.println(row.getString("release_version"));                          
+                                     
         } finally {
             if (cluster != null) cluster.close();                                         
         };
