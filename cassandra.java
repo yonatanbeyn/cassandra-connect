@@ -80,7 +80,17 @@ public class App
             if (cluster != null) cluster.close();                                         
         };
     }
+@GetMapping(value = "/inspectCache")
+public void inspectCache(String cacheName) {
 
+	CaffeineCache caffeineCache = (CaffeineCache) cacheManager.getCache(cacheName);
+	Cache<Object, Object> nativeCache = caffeineCache.getNativeCache();
 
+	for (Map.Entry<Object, Object> entry : nativeCache.asMap().entrySet()) {
+
+		System.out.println("Key = " + entry.getKey());
+		System.out.println("Value = " + entry.getValue());
+	}
+}
 
 }
