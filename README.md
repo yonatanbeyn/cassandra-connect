@@ -166,3 +166,81 @@ public void refreshAccessToken(String clientRegistrationId) {
         authorizedClientService.saveAuthorizedClient(refreshedClient, "user");
     }
 }
+
+@Bean
+    public OAuth2AuthorizedClientManager authorizedClientManager(
+            ClientRegistrationRepository clientRegistrationRepository,
+            OAuth2AuthorizedClientService authorizedClientService) {
+
+        OAuth2AuthorizationCodeGrantRequestEntityConverter requestEntityConverter =
+                new OAuth2AuthorizationCodeGrantRequestEntityConverter();
+        requestEntityConverter.addParametersConverter(parametersConverter());
+
+        OAuth2AuthorizedClientProvider authorizedClientProvider =
+                OAuth2AuthorizedClientProviderBuilder.builder()
+                        .refreshToken(refreshTokenGrantBuilder ->
+                                refreshTokenGrantBuilder.accessTokenResponseClient(customRefreshTokenTokenResponseClient()))
+                        .build();
+        DefaultAuthorizationCodeTokenResponseClient accessTokenResponseClient =
+                new DefaultAuthorizationCodeTokenResponseClient();
+        accessTokenResponseClient.setRequestEntityConverter(requestEntityConverter);
+
+
+        DefaultOAuth2AuthorizedClientManager authorizedClientManager =
+                new DefaultOAuth2AuthorizedClientManager(clientRegistrationRepository, (OAuth2AuthorizedClientRepository) authorizedClientService);
+        authorizedClientManager.setAuthorizedClientProvider(authorizedClientProvider);
+        return authorizedClientManager;
+    }
+
+    private OAuth2AccessTokenResponseClient<OAuth2RefreshTokenGrantRequest> customRefreshTokenTokenResponseClient() {
+        DefaultRefreshTokenTokenResponseClient client = new DefaultRefreshTokenTokenResponseClient();
+        client.setRequestEntityConverter(new CustomRefreshTokenGrantRequestEntityConverter());
+        return client;
+    }
+
+    
+    public void refreshAccessToken(String clientRegistrationId) {
+        OAuth2AuthorizedClient authorizedClient = authorizedClientService.loadAuthorizedClient(clientRegistrationId, "user");
+
+        if (authorizedClient != null && authorizedClient.getRefreshToken() != null) {
+            OAuth2RefreshTokenGrantRequest refreshTokenGrantRequest = new OAuth2RefreshTokenGrantRequest(
+                    authorizedClient.getClientRegistration(),authorizedClient.getAccessToken(),
+                    authorizedClient.getRefreshToken(),authorizedClient.getAccessToken().getScopes()
+                    );
+
+
+            OAuth2AuthorizedClient refreshedClient = authorizedClientManager.authorize(refreshTokenGrantRequest);
+            authorizedClientService.saveAuthorizedClient(refreshedClient,"bbbb");
+        }
+}
+    private static Converter<OAuth2AuthorizationCodeGrantRequest, MultiValueMap<String, String>> parametersConverter() {
+        return (grantRequest) -> {
+            MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
+            parameters.set("audience", "xyz_value");
+
+            return parameters;
+        };
+    }
+
+@Configuration
+public class SecurityConfig {
+
+	@Bean
+	public DefaultAuthorizationCodeTokenResponseClient authorizationCodeAccessTokenResponseClient() {
+		OAuth2AuthorizationCodeGrantRequestEntityConverter requestEntityConverter =
+			new OAuth2AuthorizationCodeGrantRequestEntityConverter();
+		requestEntityConverter.addParametersConverter(parametersConverter());
+
+		DefaultAuthorizationCodeTokenResponseClient accessTokenResponseClient =
+			new DefaultAuthorizationCodeTokenResponseClient();
+		accessTokenResponseClient.setRequestEntityConverter(requestEntityConverter);
+
+		return accessTokenResponseClient;
+	}
+
+	private static Converter<OAuth2AuthorizationCodeGrantRequest, MultiValueMap<String, String>> parametersConverter() {
+		// ...
+	}
+
+}    
+
