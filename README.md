@@ -244,3 +244,20 @@ public class SecurityConfig {
 
 }    
 
+
+mport org.springframework.http.client.BufferingClientHttpResponseWrapper;
+import org.springframework.http.client.ClientHttpResponse;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.ResponseExtractor;
+
+RestTemplate restTemplate = new RestTemplate();
+
+ResponseExtractor<String> responseExtractor = response -> {
+    BufferingClientHttpResponseWrapper responseWrapper = new BufferingClientHttpResponseWrapper((ClientHttpResponse) response);
+    // Access the body multiple times
+    String responseBody = responseWrapper.getBody().toString(); 
+    return responseBody;
+};
+
+String result = restTemplate.execute("https://example.com/api", HttpMethod.GET, null, responseExtractor);
+
