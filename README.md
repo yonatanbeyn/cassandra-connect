@@ -261,3 +261,47 @@ ResponseExtractor<String> responseExtractor = response -> {
 
 String result = restTemplate.execute("https://example.com/api", HttpMethod.GET, null, responseExtractor);
 
+import java.lang.reflect.Field;
+
+public class FieldValueFetcher {
+
+    // Example static fields
+    public static String staticField1 = "Hello, World!";
+    public static int staticField2 = 42;
+
+    /**
+     * Method to get the value of a static field by its name
+     * @param fieldName The name of the static field
+     * @return The value of the static field as an Object
+     * @throws NoSuchFieldException if the field does not exist
+     * @throws IllegalAccessException if the field is inaccessible
+     */
+    public static Object getStaticFieldValue(String fieldName) throws NoSuchFieldException, IllegalAccessException {
+        // Get the class containing the static fields (this case is FieldValueFetcher)
+        Class<?> clazz = FieldValueFetcher.class;
+
+        // Get the field by name
+        Field field = clazz.getDeclaredField(fieldName);
+
+        // Make sure the field is accessible
+        field.setAccessible(true);
+
+        // Since it's a static field, we pass null as the object instance
+        return field.get(null);
+    }
+
+    public static void main(String[] args) {
+        try {
+            // Example usage: get value of staticField1
+            String value1 = (String) getStaticFieldValue("staticField1");
+            System.out.println("Value of staticField1: " + value1);
+
+            // Example usage: get value of staticField2
+            int value2 = (int) getStaticFieldValue("staticField2");
+            System.out.println("Value of staticField2: " + value2);
+
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            e.printStackTrace();
+        }
+    }
+}
