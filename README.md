@@ -305,3 +305,20 @@ public class FieldValueFetcher {
         }
     }
 }
+
+public interface MyTableRepository extends CassandraRepository<MyTable, UUID> {
+    @Query("UPDATE my_table " +
+           "SET field1 = :field1, " +
+           "field2 = :field2, " +
+           "field_with_ttl = :fieldWithTTL USING TTL :ttl " +
+           "WHERE id = :id")
+    void updateFieldsWithTTL(@Param("field1") String field1, 
+                             @Param("field2") String field2, 
+                             @Param("fieldWithTTL") String fieldWithTTL, 
+                             @Param("ttl") int ttl, 
+                             @Param("id") UUID id);
+}
+
+
+
+
