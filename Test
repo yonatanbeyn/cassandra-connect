@@ -1,0 +1,7 @@
+@Repository
+public interface ExampleRepository extends CassandraRepository<ExampleEntity, UUID> {
+
+    @Query("UPDATE example_table USING TTL :ttl SET column_a = column_a WHERE id = :id")
+    void updateColumnTTL(@Param("id") UUID id, @Param("ttl") int ttl);
+
+}
