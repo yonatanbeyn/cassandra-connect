@@ -358,3 +358,28 @@ After extraction, navigate to the apache-cassandra-4.0.17 directory. The main Ca
 Please note that Apache Cassandra is designed to run as a distributed database system, and its typical deployment involves running the provided scripts to start the server rather than executing a standalone JAR file. Ensure that your integration testing approach aligns with Cassandra's operational model.
 
 For detailed installation instructions and guidance, refer to the official Apache Cassandra documentation.
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.web.client.RestTemplate;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+
+public class HoverflySimulationUploader {
+    public static void main(String[] args) throws Exception {
+        // Load the JSON simulation file
+        String jsonSimulation = new String(Files.readAllBytes(Paths.get("src/test/resources/hoverfly_simulation.json")));
+
+        // Set headers
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        // Create the request
+        HttpEntity<String> request = new HttpEntity<>(jsonSimulation, headers);
+        RestTemplate restTemplate = new RestTemplate();
+
+        // Send the request to Hoverfly
+        String response = restTemplate.postForObject("http://localhost:8888/api/v2/simulation", request, String.class);
+        System.out.println("Hoverfly Response: " + response);
+    }
+}
