@@ -1,0 +1,37 @@
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.data.cassandra.core.CassandraTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.util.FileCopyUtils;
+
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+
+@Service
+public class CqlLoaderService {
+
+    private final CassandraTemplate cassandraTemplate;
+
+    @Value("classpath:cql/data.cql")
+    private Resource cqlFile;
+
+    public CqlLoaderService(CassandraTemplate cassandraTemplate) {
+        this.cassandraTemplate = cassandraTemplate;
+    }
+
+    public void loadCqlStatements() {
+        try (InputStreamReader reader = new InputStreamReader(cqlFile.getInputStream(), StandardCharsets.UTF_8)) {
+            String cql = FileCopyUtils.copyToString(reader);
+            String[] statements = cql.split(";");
+
+            for (String statement : statements) {
+                if (!statement.trim().isEmpty()) {
+                    cassandraTemplate.getCqlOperations().execute(statement.trim());
+                }
+            }
+            System.out.println("CQL file executed successfully.");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
