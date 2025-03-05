@@ -1,0 +1,26 @@
+import io.specto.hoverfly.junit.core.Hoverfly;
+import io.specto.hoverfly.junit.core.HoverflyConfig;
+import io.specto.hoverfly.junit.core.HoverflyMode;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class HoverflyMiddlewareConfig {
+
+    @Bean(destroyMethod = "close")
+    public Hoverfly hoverfly() {
+        Hoverfly hoverfly = new Hoverfly(HoverflyConfig.local()
+                .destination("api.example.com")   // Match requests to this domain
+                .upstreamProxy("http://proxy.example.com")  // Route this via upstream proxy
+                .destination("api.another.com")   // Match another target
+                .proxyToTarget(true)              // Forward unmatched requests to real servers
+                .proxyPort(8500)   // Proxy port for application traffic
+                .adminPort(8888),  // Admin API port for Hoverfly
+            HoverflyMode.SIMULATE); // Run Hoverfly in simulation mode
+
+        hoverfly.start(); // Start Hoverfly as middleware
+        hoverfly.importSimulation("simulation.json"); // Load simulated API responses
+
+        return hoverfly;
+    }
+}
