@@ -1,0 +1,710 @@
+
+⌘J
+Hi give a spring boot simple crud app with Postgres aurora iam plugin support
+
+No response.
+
+Using the Postgres wrapper
+
+Here's a complete, minimal Spring Boot CRUD application using Spring Data JPA, connected to Amazon Aurora PostgreSQL with IAM authentication via the AWS Advanced JDBC Wrapper (the "Postgres wrapper").
+
+This uses the latest wrapper version (3.0.0 as of January 2026). The wrapper automatically generates and refreshes short-lived IAM auth tokens — no password needed.
+
+Prerequisites
+Aurora PostgreSQL cluster with IAM database authentication enabled.
+Database user created in the cluster (e.g., app_user).
+IAM role/policy allowing rds-db:connect on that database user.
+AWS credentials available (e.g., default profile, environment variables, or EC2/ECS role).
+Project Structure
+text
+src/main/java/com/example/demo/
+  DemoApplication.java
+  Book.java
+  BookRepository.java
+  BookController.java
+
+src/main/resources/
+  application.yml
+pom.xml
+XML
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>aurora-iam-crud</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>Aurora IAM CRUD</name>
+
+    <properties>
+        <java.version>17</java.version> <!-- or 21 -->
+        <spring-boot.version>3.2.1</spring-boot.version> <!-- adjust to latest if needed -->
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <!-- AWS Advanced JDBC Wrapper -->
+        <dependency>
+            <groupId>software.amazon.jdbc</groupId>
+            <artifactId>aws-advanced-jdbc-wrapper</artifactId>
+            <version>3.0.0</version>
+        </dependency>
+
+        <!-- PostgreSQL driver (required by the wrapper) -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+src/main/resources/application.yml
+YAML
+server:
+  port: 8080
+
+spring:
+  datasource:
+    driver-class-name: software.amazon.jdbc.Driver
+    url: jdbc:aws-wrapper:postgresql://your-cluster-endpoint.cluster-xyz.us-east-1.rds.amazonaws.com:5432/your_database?wrapperPlugins=iam
+    username: your_db_user  # e.g., app_user (must exist in the DB)
+    # No password needed for IAM auth
+    hikari:
+      maximum-pool-size: 10
+
+  jpa:
+    hibernate:
+      ddl-auto: update  # Creates/updates the table automatically
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+logging:
+  level:
+    software.amazon.jdbc: DEBUG  # Optional: helpful for debugging token refresh
+Replace:
+
+your-cluster-endpoint... with your Aurora writer endpoint.
+your_database with your DB name.
+your_db_user with the database username.
+If the region can't be auto-detected, add &iamRegion=us-east-1 to the URL.
+
+src/main/java/com/example/demo/DemoApplication.java
+Java
+package com.example.demo;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class DemoApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(DemoApplication.class, args);
+    }
+}
+src/main/java/com/example/demo/Book.java (Entity)
+Java
+package com.example.demo;
+
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+
+@Entity
+public class Book {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String title;
+    private String author;
+    private double price;
+
+    // Constructors
+    public Book() {}
+
+    public Book(String title, String author, double price) {
+        this.title = title;
+        this.author = author;
+        this.price = price;
+    }
+
+    // Getters and Setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public String getTitle() { return title; }
+    public void setTitle(String title) { this.title = title; }
+
+    public String getAuthor() { return author; }
+    public void setAuthor(String author) { this.author = author; }
+
+    public double getPrice() { return price; }
+    public void setPrice(double price) { this.price = price; }
+}
+src/main/java/com/example/demo/BookRepository.java
+Java
+package com.example.demo;
+
+import org.springframework.data.repository.CrudRepository;
+
+public interface BookRepository extends CrudRepository<Book, Long> {
+}
+src/main/java/com/example/demo/BookController.java (REST CRUD endpoints)
+Java
+package com.example.demo;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+
+@RestController
+@RequestMapping("/books")
+public class BookController {
+
+    @Autowired
+    private BookRepository repository;
+
+    @GetMapping
+    public Iterable<Book> getAll() {
+        return repository.findAll();
+    }
+
+    @GetMapping("/{id}")
+    public Book getById(@PathVariable Long id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+    }
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public Book create(@RequestBody Book book) {
+        return repository.save(book);
+    }
+
+    @PutMapping("/{id}")
+    public Book update(@PathVariable Long id, @RequestBody Book updatedBook) {
+        return repository.findById(id)
+                .map(book -> {
+                    book.setTitle(updatedBook.getTitle());
+                    book.setAuthor(updatedBook.getAuthor());
+                    book.setPrice(updatedBook.getPrice());
+                    return repository.save(book);
+                })
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable Long id) {
+        repository.deleteById(id);
+    }
+}
+How to Run
+mvn spring-boot:run
+Test endpoints (e.g., with curl or Postman):
+POST http://localhost:8080/books → { "title": "Test", "author": "Me", "price": 10.99 }
+GET http://localhost:8080/books
+The first table access creates it (thanks to ddl-auto: update). The wrapper handles IAM token generation/refresh automatically.
+
+If you see connection errors, check logs (enable DEBUG on software.amazon.jdbc) and verify your IAM policy/credentials.
+
+Let me know if you need additions (e.g., failover plugin, monitoring, or Secrets Manager integration)!
+
+Web page favicon
+Web page favicon
+Web page favicon
+71 sources
+Very cool .  Now I need to have two datasources one primary another fallback
+
+Here's the updated configuration to add automatic failover support while keeping your single datasource setup. The AWS Advanced JDBC Wrapper handles this natively for Aurora PostgreSQL clusters—no need for two separate Spring Boot datasources or custom routing logic.
+
+The wrapper maintains an internal cache of the cluster topology (writer + readers). It connects to the current writer primary, generates IAM tokens per host, detects failovers quickly (byping DNS TTL delays), and reconnects to the new promoted writer in seconds (often <1 second with tuning).
+
+This gives you a "primary with automatic fallback" behavior seamlessly. Use your Aurora cluster writer endpoint (e.g., your-cluster.cluster-xyz.us-east-1.rds.amazonaws.com)—the wrapper discovers the topology from there.
+
+Updated src/main/resources/application.yml
+YAML
+server:
+  port: 8080
+
+spring:
+  datasource:
+    driver-class-name: software.amazon.jdbc.Driver
+    url: jdbc:aws-wrapper:postgresql://your-cluster-endpoint.cluster-xyz.us-east-1.rds.amazonaws.com:5432/your_database
+    username: your_db_user  # e.g., app_user
+    # No password for IAM
+    hikari:
+      maximum-pool-size: 10
+      data-source-properties:
+        # Explicitly enable IAM + default Aurora failover plugins (topology tracking + fast failover)
+        wrapperPlugins: auroraConnectionTracker,failover2,efm2,iam
+        # Optional tuning for faster detection/refresh (adjust as needed)
+        clusterTopologyRefreshRateSeconds: 5   # How often to refresh cluster topology
+        failoverTimeoutSeconds: 30             # Max time to attempt failover reconnect
+        # If region not auto-detected (rare), add: iamRegion: us-east-1
+        # Token lifetime buffer (e.g., refresh before 15-min expiry)
+        iamExpiration: 840  # 14 minutes (in seconds)
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+logging:
+  level:
+    software.amazon.jdbc: DEBUG  # Great for seeing token refresh + failover events
+    com.zaxxer.hikari: DEBUG     # Optional: pool/connection details
+Key Changes & Why
+wrapperPlugins=auroraConnectionTracker,failover2,efm2,iam
+auroraConnectionTracker: Tracks cluster topology (writer/readers).
+failover2 + efm2: Enable fast failover and enhanced failure monitoring (default in recent wrapper versions, but we list explicitly when adding iam).
+iam: Keeps your passwordless IAM auth.
+This combo gives full fast failover + IAM.
+Moved wrapperPlugins and related params to hikari.data-source-properties (cleaner for multiple params; URL params also work but get long).
+Optional tuning params added—start with these; tighten for sub-second failover if needed.
+No other code changes required! Your existing Entity, Repository, and Controller stay exactly the same.
+Testing Failover
+Run the app and perform CRUD operations—everything works as before.
+To simulate failover: In AWS console, force a failover on your Aurora cluster (Cluster actions → Failover).
+Watch logs: You'll see brief reconnect attempts, topology refresh, and quick recovery (no long downtime).
+Your app continues without restart.
+This is the AWS-recommended best practice for Aurora high availability with IAM. It's simpler and more robust than manual multi-datasource setups.
+
+If you meant two completely separate clusters (e.g., primary in one region, async global replica in another as cold fallback), let me know—that requires a different approach (e.g., custom DataSource proxy or read-write splitting with manual switch). But for standard Aurora HA, this is perfect.
+
+Hit me up for read-write splitting (auto-send reads to readers) or Secrets Manager integration next!
+
+Web page favicon
+Web page favicon
+Web page favicon
+70 sources
+I don’t need the plugin failover because my app run in two region in private subnet , and Postgres in two region private subnet . The failover plugins need database in public or vpc peering
+
+No response.
+
+So I need to prepare two datasources with their own detail including schema name , and add logic on error to switch to the failover datasource
+
+Here's the updated Spring Boot CRUD app with two separate datasources (primary and failover/secondary), each connecting to its own Aurora PostgreSQL cluster in a different region using the AWS Advanced JDBC Wrapper for IAM authentication.
+
+Key features:
+
+Independent configuration for each datasource (URL, username, schema via SET search_path, pool settings).
+A custom FailoverDataSource that starts with the primary.
+On connection failures (e.g., cluster down, network issue), automatically switches to the secondary.
+Periodic health check to automatically switch back to primary when it recovers.
+Only IAM plugin enabled (no Aurora failover/topology plugins, as requested).
+Single JPA setup — the failover datasource is used as the main one, so no changes to your Entity/Repository/Controller.
+Updated pom.xml (unchanged)
+Same as before — ensure aws-advanced-jdbc-wrapper 3.0.0+ and postgresql are there.
+
+src/main/resources/application.yml
+YAML
+server:
+  port: 8080
+
+app:
+  datasource:
+    primary:
+      jdbc-url: jdbc:aws-wrapper:postgresql://primary-cluster.cluster-abc123.us-east-1.rds.amazonaws.com:5432/your_db_name
+      username: your_primary_db_user
+      schema: primary_schema  # e.g., public or app_schema
+      wrapper-plugins: iam
+      # iam-region: us-east-1  # Uncomment and set if region not auto-detected
+      hikari:
+        maximum-pool-size: 10
+        connection-test-query: SELECT 1  # Important for detecting broken connections quickly
+        connection-init-sql: SET search_path TO primary_schema  # Replace with your schema
+
+    secondary:
+      jdbc-url: jdbc:aws-wrapper:postgresql://secondary-cluster.cluster-def456.us-west-2.rds.amazonaws.com:5432/your_db_name
+      username: your_secondary_db_user  # Can be same or different
+      schema: failover_schema  # Different schema if needed
+      wrapper-plugins: iam
+      # iam-region: us-west-2
+      hikari:
+        maximum-pool-size: 10
+        connection-test-query: SELECT 1
+        connection-init-sql: SET search_path TO failover_schema
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+logging:
+  level:
+    software.amazon.jdbc: DEBUG
+    com.zaxxer.hikari: DEBUG
+    com.example.demo: DEBUG  # For failover logs
+Replace endpoints, db names, users, and schemas as needed. The connection-init-sql ensures the correct schema is used for each datasource's connections.
+
+New: src/main/java/com/example/demo/config/DataSourceConfig.java
+Java
+package com.example.demo.config;
+
+import com.zaxxer.hikari.HikariDataSource;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.datasource.DelegatingDataSource;
+
+import javax.sql.DataSource;
+
+@Configuration
+public class DataSourceConfig {
+
+    @Bean
+    public DataSource primaryDataSource(
+            @Value("${app.datasource.primary.jdbc-url}") String jdbcUrl,
+            @Value("${app.datasource.primary.username}") String username,
+            @Value("${app.datasource.primary.hikari.maximum-pool-size}") int maxPoolSize,
+            @Value("${app.datasource.primary.hikari.connection-test-query}") String testQuery,
+            @Value("${app.datasource.primary.hikari.connection-init-sql}") String initSql,
+            @Value("${app.datasource.primary.wrapper-plugins}") String wrapperPlugins) {
+
+        HikariDataSource ds = new HikariDataSource();
+        ds.setJdbcUrl(jdbcUrl);
+        ds.setUsername(username);
+        ds.setMaximumPoolSize(maxPoolSize);
+        ds.setConnectionTestQuery(testQuery);
+        if (initSql != null && !initSql.isBlank()) {
+            ds.setConnectionInitSql(initSql);
+        }
+        ds.addDataSourceProperty("wrapperPlugins", wrapperPlugins);
+        // ds.addDataSourceProperty("iamRegion", "us-east-1"); // Uncomment if needed
+        return ds;
+    }
+
+    @Bean
+    public DataSource secondaryDataSource(
+            @Value("${app.datasource.secondary.jdbc-url}") String jdbcUrl,
+            @Value("${app.datasource.secondary.username}") String username,
+            @Value("${app.datasource.secondary.hikari.maximum-pool-size}") int maxPoolSize,
+            @Value("${app.datasource.secondary.hikari.connection-test-query}") String testQuery,
+            @Value("${app.datasource.secondary.hikari.connection-init-sql}") String initSql,
+            @Value("${app.datasource.secondary.wrapper-plugins}") String wrapperPlugins) {
+
+        HikariDataSource ds = new HikariDataSource();
+        ds.setJdbcUrl(jdbcUrl);
+        ds.setUsername(username);
+        ds.setMaximumPoolSize(maxPoolSize);
+        ds.setConnectionTestQuery(testQuery);
+        if (initSql != null && !initSql.isBlank()) {
+            ds.setConnectionInitSql(initSql);
+        }
+        ds.addDataSourceProperty("wrapperPlugins", wrapperPlugins);
+        // ds.addDataSourceProperty("iamRegion", "us-west-2");
+        return ds;
+    }
+
+    @Bean
+    public DataSource dataSource(@Qualifier("primaryDataSource") DataSource primary,
+                                 @Qualifier("secondaryDataSource") DataSource secondary) {
+        return new FailoverDataSource(primary, secondary);
+    }
+}
+New: src/main/java/com/example/demo/config/FailoverDataSource.java
+Java
+package com.example.demo.config;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.datasource.DelegatingDataSource;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.SQLTransientConnectionException;
+
+public class FailoverDataSource extends DelegatingDataSource {
+
+    private static final Logger log = LoggerFactory.getLogger(FailoverDataSource.class);
+
+    private final DataSource primary;
+    private final DataSource secondary;
+
+    public FailoverDataSource(DataSource primary, DataSource secondary) {
+        this.primary = primary;
+        this.secondary = secondary;
+        setTargetDataSource(primary);
+    }
+
+    @Override
+    public Connection getConnection() throws SQLException {
+        try {
+            return super.getConnection();
+        } catch (SQLException ex) {
+            if (isFailoverTrigger(ex) && getTargetDataSource() == primary) {
+                log.warn("Primary datasource failure detected. Switching to secondary.", ex);
+                setTargetDataSource(secondary);
+                return super.getConnection(); // May throw if secondary also down
+            }
+            throw ex;
+        }
+    }
+
+    @Override
+    public Connection getConnection(String username, String password) throws SQLException {
+        return getConnection(); // IAM auth — no password used
+    }
+
+    private boolean isFailoverTrigger(SQLException ex) {
+        // Postgres connection exceptions (08xxx) + common transient errors
+        SQLException e = ex;
+        while (e != null) {
+            String state = e.getSQLState();
+            if (state != null && (state.startsWith("08") || state.equals("08006"))) {
+                return true;
+            }
+            if (e instanceof SQLTransientConnectionException) {
+                return true;
+            }
+            e = e.getNextException();
+        }
+        return false;
+    }
+
+    public void attemptSwitchBack() {
+        if (getTargetDataSource() == secondary) {
+            try (Connection conn = primary.getConnection()) {
+                conn.createStatement().execute("SELECT 1");
+                log.info("Primary recovered — switching back.");
+                setTargetDataSource(primary);
+            } catch (Exception ignored) {
+                log.debug("Primary still unavailable — staying on secondary.");
+            }
+        }
+    }
+}
+New: src/main/java/com/example/demo/config/FailoverHealthChecker.java
+Java
+package com.example.demo.config;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+@Component
+public class FailoverHealthChecker {
+
+    @Autowired
+    private FailoverDataSource failoverDataSource;
+
+    @Scheduled(fixedRate = 300000) // Every 5 minutes — adjust as needed
+    public void checkPrimaryHealth() {
+        failoverDataSource.attemptSwitchBack();
+    }
+}
+Update DemoApplication.java
+Java
+package com.example.demo;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
+
+@SpringBootApplication
+@EnableScheduling  // Enables the health checker
+public class DemoApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(DemoApplication.class, args);
+    }
+}
+Behavior
+Starts on primary.
+On cluster failure → Hikari detects via validation → getConnection() fails → auto-switch to secondary (current request fails, subsequent succeed).
+Every 5 min, checks primary — switches back if healthy.
+Schemas handled per-datasource via search_path.
+Logs show switch events (check console or add file logging).
+Your existing Book.java, BookRepository.java, and BookController.java remain unchanged.
+
+Test by forcing a primary cluster failover or stopping it — watch logs for switch. This gives you code-level multi-region failover without relying on DNS or wrapper topology plugins.
+
+If you need read-write splitting, manual switch endpoint, or Secrets Manager for users/tokens, just say!
+
+datasource:
+driver-class-name: software.amazon.jdbc.Driver url: jdbc:aws-wrapper:postgresql://${datasource.writeurl):6160/mydb?currentSchema=pubLic&awsRegion=us-east-1&ssl=trueâsslmode=require6wrapperPLugins=iam
+username: cbFFFG
+jpa:
+9
+hibernate.ddl-auto: validate show-sql: true properties:
+hibernate. dialect: org.hibernate.dialect. PostgresQLDialect hibernate.use_sql_comments: true hibernate.format_sql: true this is the config which supports iam authentication so  show how to for the above example with all this
+
+Here's the updated multi-datasource failover setup, fully adapted to match your provided configuration style and details:
+
+Driver: software.amazon.jdbc.Driver
+Full JDBC URL with wrapper, including wrapperPlugins=iam, iamRegion (corrected from your awsRegion), ssl=true&sslmode=require, currentSchema=public (fixed typo pubLic), port 6160, database dao
+Placeholder ${datasource.writeurl} style (I assumed separate placeholders for primary/secondary hosts to support two regions; adjust if you use a single var)
+Username example matching your cbFFFG style (with fallback/default)
+hibernate.ddl-auto: validate
+Dialect, use_sql_comments, format_sql, show-sql exactly as specified
+Schema handled via currentSchema in URL (different per datasource as you requested "own detail including schema name")
+IAM-only (no password)
+Failover logic unchanged (auto-switch on failure, periodic switch-back)
+Your existing Book.java, BookRepository.java, BookController.java, FailoverDataSource.java, FailoverHealthChecker.java, and DemoApplication.java (with @EnableScheduling) remain exactly the same.
+
+Updated src/main/resources/application.yml
+YAML
+server:
+  port: 8080
+
+app:
+  datasource:
+    primary:
+      jdbc-url: jdbc:aws-wrapper:postgresql://${datasource.primary.host}:6160/mydb?currentSchema=public&iamRegion=us-east-1&ssl=true&sslmode=require&wrapperPlugins=iam
+      username: ${datasource.primary.username:mydb_primary_user}
+      hikari:
+        maximum-pool-size: 10
+        connection-test-query: SELECT 1
+
+    secondary:
+      jdbc-url: jdbc:aws-wrapper:postgresql://${datasource.secondary.host}:6160/mydb?currentSchema=failover_schema&iamRegion=us-west-2&ssl=true&sslmode=require&wrapperPlugins=iam
+      username: ${datasource.secondary.username:mydb_failover_user}
+      hikari:
+        maximum-pool-size: 10
+        connection-test-query: SELECT 1
+
+spring:
+  jpa:
+    show-sql: true
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        use_sql_comments: true
+        format_sql: true
+
+logging:
+  level:
+    software.amazon.jdbc: DEBUG
+    com.zaxxer.hikari: DEBUG
+    com.example.demo: DEBUG
+Notes on config:
+
+Replace/adjust placeholders (e.g., set environment variables DATASOURCE_PRIMARY_HOST, DATASOURCE_SECONDARY_HOST, etc.).
+Primary uses currentSchema=public, secondary uses currentSchema=failover_schema (change if both should be public).
+Added ssl=true&sslmode=require to exactly match your snippet.
+iamRegion (not awsRegion — this is the correct wrapper parameter name per AWS docs).
+If you prefer a single placeholder style like ${datasource.writeurl}, just adjust the URLs accordingly (e.g., ${datasource.primary.writeurl} including host:port).
+Updated src/main/java/com/example/demo/config/DataSourceConfig.java
+(Simplified — no need for separate wrapperPlugins or init-sql since they're in the URL)
+
+Java
+package com.example.demo.config;
+
+import com.zaxxer.hikari.HikariDataSource;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.datasource.DelegatingDataSource;
+
+import javax.sql.DataSource;
+
+@Configuration
+public class DataSourceConfig {
+
+    @Bean
+    public DataSource primaryDataSource(
+            @Value("${app.datasource.primary.jdbc-url}") String jdbcUrl,
+            @Value("${app.datasource.primary.username}") String username,
+            @Value("${app.datasource.primary.hikari.maximum-pool-size}") int maxPoolSize,
+            @Value("${app.datasource.primary.hikari.connection-test-query}") String testQuery) {
+
+        HikariDataSource ds = new HikariDataSource();
+        ds.setJdbcUrl(jdbcUrl);
+        ds.setUsername(username);
+        ds.setDriverClassName("software.amazon.jdbc.Driver");
+        ds.setMaximumPoolSize(maxPoolSize);
+        ds.setConnectionTestQuery(testQuery);
+        return ds;
+    }
+
+    @Bean
+    public DataSource secondaryDataSource(
+            @Value("${app.datasource.secondary.jdbc-url}") String jdbcUrl,
+            @Value("${app.datasource.secondary.username}") String username,
+            @Value("${app.datasource.secondary.hikari.maximum-pool-size}") int maxPoolSize,
+            @Value("${app.datasource.secondary.hikari.connection-test-query}") String testQuery) {
+
+        HikariDataSource ds = new HikariDataSource();
+        ds.setJdbcUrl(jdbcUrl);
+        ds.setUsername(username);
+        ds.setDriverClassName("software.amazon.jdbc.Driver");
+        ds.setMaximumPoolSize(maxPoolSize);
+        ds.setConnectionTestQuery(testQuery);
+        return ds;
+    }
+
+    @Bean
+    public DataSource dataSource(@Qualifier("primaryDataSource") DataSource primary,
+                                 @Qualifier("secondaryDataSource") DataSource secondary) {
+        return new FailoverDataSource(primary, secondary);
+    }
+}
+Everything else (failover logic, health checker, entities, controller) works exactly as before. The app will start on primary, auto-switch to secondary on connection failures (e.g., region outage), and switch back when primary recovers.
+
+Test the same way: run, perform CRUD, simulate primary outage → requests after the failure use secondary.
+
+Let me know if you want to add manual switch endpoint, metrics, or anything else!
+
+
+
+
+Upgrade to SuperGrok
+Spring Boot CRUD with Aurora IAM - Grok
