@@ -587,7 +587,7 @@ hibernate. dialect: org.hibernate.dialect. PostgresQLDialect hibernate.use_sql_c
 Here's the updated multi-datasource failover setup, fully adapted to match your provided configuration style and details:
 
 Driver: software.amazon.jdbc.Driver
-Full JDBC URL with wrapper, including wrapperPlugins=iam, iamRegion (corrected from your awsRegion), ssl=true&sslmode=require, currentSchema=public (fixed typo pubLic), port 6160, database dao
+Full JDBC URL with wrapper, including wrapperPlugins=iam, iamRegion (corrected from your awsRegion), ssl=true&sslmode=require, currentSchema=public (fixed typo pubLic), port 6160, database
 Placeholder ${datasource.writeurl} style (I assumed separate placeholders for primary/secondary hosts to support two regions; adjust if you use a single var)
 Username example matching your cbFFFG style (with fallback/default)
 hibernate.ddl-auto: validate
